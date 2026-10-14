@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+
+  --color-canvas: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-ink: #151a21;
+  --color-ink-muted: #56606e;
+  --color-ink-faint: #7d8794;
+  --color-line: #e2e5ea;
+  --color-line-strong: #c9ced6;
+  --color-accent: #1d4fa8;
+  --color-accent-soft: #edf2fb;
+
+  /* Severity: a fill for marks and map shapes, a soft tint for badges, a dark ink for text.
+     The fills are mirrored in components/weather/map-theme.ts for the map canvas. */
+  --color-critical: #d0321f;
+  --color-critical-soft: #fcecea;
+  --color-critical-ink: #a8241a;
+  --color-high: #e07412;
+  --color-high-soft: #fdf0e2;
+  --color-high-ink: #9a4505;
+  --color-moderate: #dba307;
+  --color-moderate-soft: #fbf3d6;
+  --color-moderate-ink: #755700;
+  --color-low: #3b7fc9;
+  --color-low-soft: #e8f0fa;
+  --color-low-ink: #24598f;
+  --color-info: #8a93a0;
+  --color-info-soft: #eef0f3;
+  --color-info-ink: #4f5964;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* ---- Map markers (created imperatively by MapLibre, so styled here) ---- */
+
+.wm-marker {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  --marker-color: var(--color-info);
+}
+.wm-marker[data-level="critical"] { --marker-color: var(--color-critical); }
+.wm-marker[data-level="high"] { --marker-color: var(--color-high); }
+.wm-marker[data-level="moderate"] { --marker-color: var(--color-moderate); }
+.wm-marker[data-level="low"] { --marker-color: var(--color-low); }
+
+.wm-marker__shape {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 9999px;
+  background: var(--marker-color);
+  box-shadow: 0 0 0 1px rgb(21 26 33 / 0.3);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+/* Official alerts are squares with a "!", detected risks are dots: shape, not just color. */
+.wm-marker[data-kind="alert"] .wm-marker__shape {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+}
+.wm-marker[data-level="moderate"] .wm-marker__shape { color: var(--color-ink); }
+.wm-marker[data-selected="true"] { z-index: 2; }
+.wm-marker[data-selected="true"] .wm-marker__shape {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 3px var(--color-ink);
+}
+.wm-marker:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 0;
+  border-radius: 9999px;
+}
+
+.wm-center {
+  width: 16px;
+  height: 16px;
+  border: 3px solid #fff;
+  border-radius: 9999px;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 1.5px var(--color-accent), 0 2px 6px rgb(21 26 33 / 0.3);
+}
+
+/* ---- Map popup ---- */
+
+.maplibregl-popup-content {
+  padding: 12px 14px;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgb(21 26 33 / 0.16), 0 0 0 1px rgb(21 26 33 / 0.06);
+  font-family: var(--font-sans);
+}
+.maplibregl-popup-close-button {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--color-ink-muted);
+  font-size: 18px;
+}
+.wm-popup__kind {
+  margin: 0;
+  padding-right: 20px;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+.wm-popup__title {
+  margin: 2px 0 0;
+  color: var(--color-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.wm-popup__line {
+  margin: 4px 0 0;
+  color: var(--color-ink-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wm-marker__shape { transition: none; }
+}
