@@ -88,7 +88,7 @@ On serverless hosting (Vercel) the disk does not persist and nothing runs betwee
   `DATABASE_CA_CERT`. No Supabase keys are used or shipped to the browser.
 - **Schedule.** Set `WEATHER_SCHEDULER=off` and let Supabase `pg_cron` + `pg_net` call
   `/api/cron/weather-monitors` every 5 minutes with `Authorization: Bearer $CRON_SECRET` (the secret
-  is kept in Supabase Vault).
+  is kept in Supabase Vault as `weather_cron_secret`). The job is in `supabase/cron-weather-monitors.sql`.
 
 ## How it works
 
