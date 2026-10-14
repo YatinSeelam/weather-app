@@ -23,6 +23,13 @@ export function createRateLimiter(options: { limit: number; windowMs: number }) 
       }
       return { allowed: true, retryAfterSeconds: 0 };
     },
+
+    /** Same answer as `check`, without counting this call. */
+    peek(key: string, now = Date.now()): RateLimitDecision {
+      const recent = (hits.get(key) ?? []).filter((time) => time > now - options.windowMs);
+      if (recent.length < options.limit) return { allowed: true, retryAfterSeconds: 0 };
+      return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((recent[0] + options.windowMs - now) / 1000)) };
+    },
   };
 }
 

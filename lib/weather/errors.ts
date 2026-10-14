@@ -10,6 +10,7 @@ export type WeatherErrorCode =
   | "NETWORK"
   | "NOT_FOUND"
   | "UNAUTHORIZED"
+  | "MONITOR_LIMIT"
   | "INTERNAL";
 
 const HTTP_STATUS: Record<WeatherErrorCode, number> = {
@@ -22,6 +23,7 @@ const HTTP_STATUS: Record<WeatherErrorCode, number> = {
   NETWORK: 502,
   NOT_FOUND: 404,
   UNAUTHORIZED: 401,
+  MONITOR_LIMIT: 409,
   INTERNAL: 500,
 };
 

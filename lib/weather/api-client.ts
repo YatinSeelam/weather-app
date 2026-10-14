@@ -60,6 +60,9 @@ async function request<T>(
   return body as T;
 }
 
+/** Whether the saved-monitor API is set up on the server, and whether this browser may use it. */
+export type MonitorAccess = { configured: boolean; unlocked: boolean };
+
 export const api = {
   geocode(zip: string, signal?: AbortSignal) {
     return request<ZipCoordinates>(`/api/weather/geocode?zip=${encodeURIComponent(zip)}`, { signal });
@@ -72,6 +75,19 @@ export const api = {
       signal,
       timeoutMs: CHECK_TIMEOUT_MS,
     });
+  },
+
+  monitorAccess(signal?: AbortSignal) {
+    return request<MonitorAccess>("/api/weather/session", { signal });
+  },
+
+  /** Trades the access key for an HttpOnly session cookie. The key is never stored in the page. */
+  unlockMonitors(secret: string) {
+    return request<MonitorAccess>("/api/weather/session", { method: "POST", body: JSON.stringify({ secret }) });
+  },
+
+  lockMonitors() {
+    return request<void>("/api/weather/session", { method: "DELETE" });
   },
 
   listMonitors(signal?: AbortSignal) {

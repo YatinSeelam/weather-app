@@ -128,12 +128,16 @@ export function useWeatherCheck() {
 const MONITOR_REFRESH_MS = 60_000;
 
 export type MonitorsState = {
-  status: "loading" | "ready" | "error";
+  /** "locked": the server wants the access key. "unconfigured": the server has no access key set. */
+  status: "loading" | "ready" | "error" | "locked" | "unconfigured";
   monitors: WeatherMonitor[];
   error: string | null;
   /** Null until the server has answered. */
   notifications: NotificationStatus | null;
 };
+
+const isUnauthorized = (error: unknown) => error instanceof ApiError && error.status === 401;
+const LOCKED_OUT = { monitors: [], error: null, notifications: null };
 
 export function useMonitors() {
   const [state, setState] = useState<MonitorsState>({
@@ -142,27 +146,63 @@ export function useMonitors() {
     error: null,
     notifications: null,
   });
+  const lockedRef = useRef(false);
 
-  const refresh = useCallback(async (signal?: AbortSignal) => {
+  useEffect(() => {
+    lockedRef.current = state.status === "locked" || state.status === "unconfigured";
+  }, [state.status]);
+
+  /** After a 401: drop whatever was shown and find out whether to ask for the access key. */
+  const lockOut = useCallback(async (signal?: AbortSignal) => {
+    setState({ status: "locked", ...LOCKED_OUT });
     try {
-      const { monitors, notifications } = await api.listMonitors(signal);
-      setState({ status: "ready", monitors, error: null, notifications });
-    } catch (error) {
-      if (signal?.aborted) return;
-      setState((previous) => ({ ...previous, status: "error", error: errorMessage(error) }));
+      const access = await api.monitorAccess(signal);
+      if (!access.configured) setState({ status: "unconfigured", ...LOCKED_OUT });
+    } catch {
+      // Stay locked; the unlock form reports any real problem.
     }
   }, []);
+
+  const refresh = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const { monitors, notifications } = await api.listMonitors(signal);
+        setState({ status: "ready", monitors, error: null, notifications });
+      } catch (error) {
+        if (signal?.aborted) return;
+        if (isUnauthorized(error)) return lockOut(signal);
+        setState((previous) => ({ ...previous, status: "error", error: errorMessage(error) }));
+      }
+    },
+    [lockOut],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
     void refresh(controller.signal);
-    // Keeps "last checked" current while the scheduler works in the background.
-    const timer = setInterval(() => void refresh(controller.signal), MONITOR_REFRESH_MS);
+    // Keeps "last checked" current while the scheduler works in the background. Paused while
+    // locked so an open tab does not keep knocking.
+    const timer = setInterval(() => {
+      if (!lockedRef.current) void refresh(controller.signal);
+    }, MONITOR_REFRESH_MS);
     return () => {
       controller.abort();
       clearInterval(timer);
     };
   }, [refresh]);
+
+  /** Runs a monitor request; a 401 (session expired, key rotated) locks the panel again. */
+  const guarded = useCallback(
+    async <T>(action: () => Promise<T>): Promise<T> => {
+      try {
+        return await action();
+      } catch (error) {
+        if (isUnauthorized(error)) void lockOut();
+        throw error;
+      }
+    },
+    [lockOut],
+  );
 
   const replace = (monitor: WeatherMonitor) =>
     setState((previous) => ({
@@ -174,22 +214,48 @@ export function useMonitors() {
         : [monitor, ...previous.monitors],
     }));
 
-  const create = useCallback(async (request: CreateMonitorRequest) => {
-    const monitor = await api.createMonitor(request);
-    replace(monitor);
-    return monitor;
+  const create = useCallback(
+    (request: CreateMonitorRequest) =>
+      guarded(async () => {
+        const monitor = await api.createMonitor(request);
+        replace(monitor);
+        return monitor;
+      }),
+    [guarded],
+  );
+
+  const update = useCallback(
+    (id: string, patch: UpdateMonitorRequest) =>
+      guarded(async () => {
+        const monitor = await api.updateMonitor(id, patch);
+        replace(monitor);
+        return monitor;
+      }),
+    [guarded],
+  );
+
+  const remove = useCallback(
+    (id: string) =>
+      guarded(async () => {
+        await api.deleteMonitor(id);
+        setState((previous) => ({ ...previous, monitors: previous.monitors.filter((m) => m.id !== id) }));
+      }),
+    [guarded],
+  );
+
+  const unlock = useCallback(
+    async (secret: string) => {
+      await api.unlockMonitors(secret);
+      setState({ status: "loading", ...LOCKED_OUT });
+      await refresh();
+    },
+    [refresh],
+  );
+
+  const lock = useCallback(async () => {
+    await api.lockMonitors();
+    setState({ status: "locked", ...LOCKED_OUT });
   }, []);
 
-  const update = useCallback(async (id: string, patch: UpdateMonitorRequest) => {
-    const monitor = await api.updateMonitor(id, patch);
-    replace(monitor);
-    return monitor;
-  }, []);
-
-  const remove = useCallback(async (id: string) => {
-    await api.deleteMonitor(id);
-    setState((previous) => ({ ...previous, monitors: previous.monitors.filter((m) => m.id !== id) }));
-  }, []);
-
-  return { ...state, create, update, remove, refresh };
+  return { ...state, create, update, remove, refresh, unlock, lock };
 }

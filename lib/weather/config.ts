@@ -1,4 +1,5 @@
 import path from "node:path";
+import { DEFAULT_MAX_ACTIVE_MONITORS } from "./constants";
 
 const trimSlash = (url: string) => url.replace(/\/+$/, "");
 
@@ -21,6 +22,18 @@ export const resendApiKey = () => process.env.RESEND_API_KEY?.trim() || null;
  * verified in Resend. The default only delivers to the Resend account owner's own address.
  */
 export const emailFrom = () => process.env.EMAIL_FROM?.trim() || "Weather Monitor <onboarding@resend.dev>";
+
+/**
+ * Access key for the saved-monitor API (list, create, update, delete). Server-only: never
+ * prefix it with NEXT_PUBLIC_. Without it the monitor API refuses every request.
+ */
+export const monitorApiSecret = () => process.env.MONITOR_API_SECRET?.trim() || null;
+
+/** Most monitors that may be enabled at once, so the app cannot be turned into a mail cannon. */
+export function maxActiveMonitors(): number {
+  const value = Number(process.env.MAX_ACTIVE_MONITORS);
+  return Number.isInteger(value) && value > 0 ? value : DEFAULT_MAX_ACTIVE_MONITORS;
+}
 
 export const dataDirectory = () => process.env.WEATHER_DATA_DIR ?? path.join(process.cwd(), "data");
 

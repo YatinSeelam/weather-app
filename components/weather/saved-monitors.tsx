@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
+import { errorMessage } from "@/lib/weather/api-client";
 import { EMAIL_MODE_LABELS, EMAIL_MODE_OPTIONS, INTERVAL_OPTIONS, MAX_MONITOR_EMAILS } from "@/lib/weather/constants";
 import { looksLikeEmail, splitEmailList } from "@/lib/weather/email-list";
 import { formatClock, formatDateTime, formatInterval, pluralize } from "@/lib/weather/format";
@@ -19,6 +20,8 @@ type Props = MonitorsState & {
   onInterval: (monitor: WeatherMonitor, intervalMinutes: MonitorInterval) => void;
   onEmails: (monitor: WeatherMonitor, emails: string[], emailMode: EmailMode) => void;
   onDelete: (monitor: WeatherMonitor) => void;
+  onUnlock: (secret: string) => Promise<void>;
+  onLock: () => void;
 };
 
 const TEXT_BUTTON =
@@ -154,6 +157,67 @@ function EmailRecipients({
   );
 }
 
+/** The access key goes straight to the server, which answers with an HttpOnly session cookie. */
+function UnlockForm({ onUnlock }: { onUnlock: Props["onUnlock"] }) {
+  const [secret, setSecret] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const key = secret.trim();
+    if (!key) return setError("Enter the access key.");
+    setBusy(true);
+    setError(null);
+    try {
+      await onUnlock(key);
+      setSecret("");
+    } catch (unlockError) {
+      setError(errorMessage(unlockError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="px-5 pb-5 pt-2">
+      <p className="text-[13px] leading-5 text-ink-muted">
+        Saved monitors and their email recipients are private. Enter the access key to view and manage them.
+      </p>
+      <label htmlFor="monitor-access-key" className="mt-3 block text-[13px] font-medium text-ink">
+        Access key
+      </label>
+      <div className="mt-1.5 flex gap-2">
+        <input
+          id="monitor-access-key"
+          type="password"
+          autoComplete="current-password"
+          value={secret}
+          onChange={(event) => {
+            setSecret(event.target.value);
+            setError(null);
+          }}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? "monitor-access-key-error" : undefined}
+          className="block h-9 min-w-0 flex-1 rounded-lg border border-line-strong bg-surface px-3 text-sm text-ink focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-accent aria-invalid:border-critical"
+        />
+        <button
+          type="submit"
+          disabled={busy}
+          className="h-9 shrink-0 rounded-lg bg-ink px-3.5 text-sm font-semibold text-white transition-colors hover:bg-ink/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-progress disabled:bg-ink/70"
+        >
+          {busy ? "Unlocking…" : "Unlock"}
+        </button>
+      </div>
+      {error && (
+        <p id="monitor-access-key-error" role="alert" className="mt-1.5 text-[13px] text-critical-ink">
+          {error}
+        </p>
+      )}
+    </form>
+  );
+}
+
 function MonitorRow({
   monitor,
   busy,
@@ -258,19 +322,44 @@ function MonitorRow({
   );
 }
 
-export function SavedMonitors({ status, monitors, error, notifications, busyId, actionError, ...actions }: Props) {
+export function SavedMonitors({
+  status,
+  monitors,
+  error,
+  notifications,
+  busyId,
+  actionError,
+  onUnlock,
+  onLock,
+  ...actions
+}: Props) {
   return (
     <section aria-labelledby="saved-monitors-heading" className="rounded-xl border border-line bg-surface">
       <div className="flex items-baseline justify-between px-5 pt-4">
         <h2 id="saved-monitors-heading" className="text-sm font-semibold text-ink">
           Saved monitors
         </h2>
-        {monitors.length > 0 && <span className="text-[13px] text-ink-muted tabular-nums">{monitors.length}</span>}
+        <span className="flex items-baseline gap-3">
+          {monitors.length > 0 && <span className="text-[13px] text-ink-muted tabular-nums">{monitors.length}</span>}
+          {(status === "ready" || status === "error") && (
+            <button type="button" className={`${TEXT_BUTTON} text-ink-muted`} onClick={onLock}>
+              Lock
+            </button>
+          )}
+        </span>
       </div>
 
       {actionError && (
         <p role="alert" className="px-5 pt-2 text-[13px] text-critical-ink">
           {actionError}
+        </p>
+      )}
+
+      {status === "locked" && <UnlockForm onUnlock={onUnlock} />}
+
+      {status === "unconfigured" && (
+        <p className="px-5 pb-5 pt-2 text-[13px] leading-5 text-ink-muted">
+          Saved monitors are turned off on this server. Set MONITOR_API_SECRET to enable them.
         </p>
       )}
 

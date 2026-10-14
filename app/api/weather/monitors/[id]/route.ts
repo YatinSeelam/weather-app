@@ -1,5 +1,7 @@
+import { maxActiveMonitors } from "@/lib/weather/config";
 import { WeatherError } from "@/lib/weather/errors";
 import { errorResponse, jsonResponse, readJsonBody, validationErrorResponse } from "@/lib/weather/http-response";
+import { authorizeMonitorRequest } from "@/lib/weather/monitor-auth";
 import { computeNextCheckAt } from "@/lib/weather/monitor-schedule";
 import { getMonitorStore, type WeatherMonitor } from "@/lib/weather/monitor-store";
 import { updateMonitorSchema } from "@/lib/weather/schemas";
@@ -10,6 +12,7 @@ const notFound = () => new WeatherError("NOT_FOUND", "That monitor no longer exi
 
 export async function PATCH(request: Request, { params }: Context) {
   try {
+    authorizeMonitorRequest(request);
     const { id } = await params;
     const parsed = updateMonitorSchema.safeParse(await readJsonBody(request));
     if (!parsed.success) return validationErrorResponse(parsed.error);
@@ -34,7 +37,7 @@ export async function PATCH(request: Request, { params }: Context) {
       patch.nextCheckAt = computeNextCheckAt(from, rest.intervalMinutes).toISOString();
     }
 
-    const monitor = await store.updateMonitor(id, patch);
+    const monitor = await store.updateMonitor(id, patch, { maxActive: maxActiveMonitors() });
     if (!monitor) throw notFound();
     return jsonResponse({ monitor });
   } catch (error) {
@@ -42,8 +45,9 @@ export async function PATCH(request: Request, { params }: Context) {
   }
 }
 
-export async function DELETE(_request: Request, { params }: Context) {
+export async function DELETE(request: Request, { params }: Context) {
   try {
+    authorizeMonitorRequest(request);
     const { id } = await params;
     if (!(await getMonitorStore().deleteMonitor(id))) throw notFound();
     return new Response(null, { status: 204 });

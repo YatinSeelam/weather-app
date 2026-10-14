@@ -116,4 +116,11 @@ export const NWS_REQUEST = {
 
 export const CHECK_RATE_LIMIT = { limit: 20, windowMs: 60_000 } as const;
 
+/** New monitors per client. Each one sends email right away, so this is kept tight. */
+export const MONITOR_CREATE_RATE_LIMIT = { limit: 10, windowMs: 15 * 60_000 } as const;
+/** Wrong access keys per client before every monitor request from it is refused for a while. */
+export const MONITOR_AUTH_FAILURE_LIMIT = { limit: 10, windowMs: 15 * 60_000 } as const;
+/** Enabled monitors allowed at once (override with MAX_ACTIVE_MONITORS). */
+export const DEFAULT_MAX_ACTIVE_MONITORS = 25;
+
 export const SCHEDULER_TICK_MS = 60_000;

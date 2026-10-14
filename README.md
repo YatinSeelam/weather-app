@@ -4,12 +4,14 @@ Monitor severe weather inside a radius around a U.S. ZIP code: official National
 alerts plus system-detected freezing, wind and rain risks, on an interactive map, with saved
 monitors that are re-checked on a schedule.
 
-No database, no accounts, no API keys. Everything runs with `pnpm dev`.
+No database and no accounts. Weather checks need no keys; saved monitors need one shared access
+key (`MONITOR_API_SECRET`).
 
 ## Run it
 
 ```bash
 pnpm install
+echo "MONITOR_API_SECRET=$(openssl rand -hex 32)" >> .env.local   # access key for saved monitors
 pnpm dev            # http://localhost:3000/weather-monitor
 ```
 
@@ -37,10 +39,12 @@ forecast samples succeeded.
 
 ## Configuration
 
-All optional; see `.env.example`.
+See `.env.example`. Only `MONITOR_API_SECRET` is needed, and only for saved monitors.
 
 | Variable | Purpose |
 | --- | --- |
+| `MONITOR_API_SECRET` | Shared access key for the saved-monitor API. Server-only (never `NEXT_PUBLIC_`). Unset means saved monitors are off. |
+| `MAX_ACTIVE_MONITORS` | How many monitors may be enabled at once. Default 25. |
 | `NWS_USER_AGENT` | How this app identifies itself to api.weather.gov. NWS asks for contact details, e.g. `my-app (ops@example.com)`. |
 | `RESEND_API_KEY` | Enables email delivery for saved monitors through [Resend](https://resend.com). |
 | `EMAIL_FROM` | Sender, e.g. `Weather Monitor <alerts@yourdomain.com>` (domain verified in Resend). Default `onboarding@resend.dev` delivers only to the Resend account owner. |
@@ -49,6 +53,27 @@ All optional; see `.env.example`.
 | `WEATHER_SCHEDULER` | `off` disables the in-process scheduler. |
 | `WEATHER_DATA_DIR`, `WEATHER_CACHE_DIR` | Where saved monitors and lookup caches live (default `./data`, `./.cache/weather`). |
 | `NEXT_PUBLIC_MAP_STYLE_URL` | MapLibre basemap style. Defaults to OpenFreeMap (OpenStreetMap data, no key). |
+
+## Access control
+
+Saved monitors contain recipient email addresses and creating one sends email, so every route
+under `/api/weather/monitors` (GET, POST, PATCH, DELETE) requires the shared access key and
+answers `401` without it. There are no user accounts; whoever holds the key manages all monitors.
+
+- **Browser.** The Saved monitors panel asks for the key once. `POST /api/weather/session` checks
+  it and sets an `HttpOnly`, `SameSite=Strict` cookie scoped to `/api/weather` that holds a signed
+  expiry (7 days), never the key itself. Page JavaScript cannot read it and the key is never in the
+  client bundle. "Lock" (`DELETE /api/weather/session`) drops it; rotating the key signs everyone out.
+- **Scripts.** Send `Authorization: Bearer $MONITOR_API_SECRET`:
+  `curl -H "Authorization: Bearer $MONITOR_API_SECRET" https://your-host/api/weather/monitors`
+- **Abuse limits.** Each client may create 10 monitors per 15 minutes, at most
+  `MAX_ACTIVE_MONITORS` monitors can be enabled at once (also enforced when re-enabling one), and
+  10 wrong keys from one client in 15 minutes lock it out of the monitor API for the rest of that
+  window. Changes that ride on the cookie must come from this origin (`Sec-Fetch-Site`).
+- **Unset key.** The monitor API fails closed: every request gets `401`. Weather checks, the map
+  and `/api/weather/health` stay public; `/api/cron/weather-monitors` keeps using `CRON_SECRET`.
+
+Rate limits are in memory, so they apply per server instance.
 
 ## How it works
 
@@ -109,7 +134,8 @@ app/weather-monitor/page.tsx        the page
 app/api/weather/check               POST  run a radius check
 app/api/weather/geocode             GET   ZIP preview
 app/api/weather/health              GET   are NWS, the geocoder and storage reachable
-app/api/weather/monitors[/id]       saved monitors: list, create, update, delete
+app/api/weather/monitors[/id]       saved monitors: list, create, update, delete (access key required)
+app/api/weather/session             unlock / lock saved monitors in the browser
 app/api/cron/weather-monitors       run due monitors
 components/weather/                 form, map, summary, results, saved monitors
 lib/weather/                        domain: NWS client, geography, sampling, risk engine,

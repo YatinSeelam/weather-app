@@ -4,6 +4,7 @@ import type { AlertStateRecord, RiskChange } from "./alert-change";
 import { singleton } from "./concurrency";
 import { dataDirectory } from "./config";
 import { DEFAULT_EMAIL_MODE } from "./constants";
+import { WeatherError } from "./errors";
 import type { EmailMode, MonitorInterval, RiskSelection, SeverityLevel, WeatherThresholds } from "./types";
 
 /** Mirrors a `weather_monitors` row, so moving to a database later is a storage swap only. */
@@ -52,13 +53,32 @@ export type MonitorRun = {
 export interface MonitorStore {
   listMonitors(): Promise<WeatherMonitor[]>;
   getMonitor(id: string): Promise<WeatherMonitor | null>;
-  createMonitor(monitor: WeatherMonitor): Promise<WeatherMonitor>;
-  updateMonitor(id: string, patch: Partial<Omit<WeatherMonitor, "id">>): Promise<WeatherMonitor | null>;
+  /** With `maxActive`, refuses (MONITOR_LIMIT) when that many monitors are already enabled. */
+  createMonitor(monitor: WeatherMonitor, options?: CapacityOptions): Promise<WeatherMonitor>;
+  /** With `maxActive`, refuses (MONITOR_LIMIT) to enable a paused monitor when the limit is reached. */
+  updateMonitor(
+    id: string,
+    patch: Partial<Omit<WeatherMonitor, "id">>,
+    options?: CapacityOptions,
+  ): Promise<WeatherMonitor | null>;
   deleteMonitor(id: string): Promise<boolean>;
   getAlertStates(monitorId: string): Promise<AlertStateRecord[]>;
   replaceAlertStates(monitorId: string, states: AlertStateRecord[]): Promise<void>;
   appendRun(run: MonitorRun): Promise<void>;
   listRuns(monitorId: string, limit?: number): Promise<MonitorRun[]>;
+}
+
+export type CapacityOptions = { maxActive?: number };
+
+/** Checked inside the store's transaction, so concurrent requests cannot both squeeze past it. */
+function assertRoomForActiveMonitor(monitors: WeatherMonitor[], maxActive: number | undefined): void {
+  if (maxActive === undefined) return;
+  if (monitors.filter((m) => m.enabled).length >= maxActive) {
+    throw new WeatherError(
+      "MONITOR_LIMIT",
+      `At most ${maxActive} monitors can be active at once. Pause or delete one first.`,
+    );
+  }
 }
 
 type StoreFile = {
@@ -131,17 +151,21 @@ export class JsonFileMonitorStore implements MonitorStore {
     return this.transact((data) => ({ result: data.monitors.find((m) => m.id === id) ?? null, save: false }));
   }
 
-  createMonitor(monitor: WeatherMonitor) {
+  createMonitor(monitor: WeatherMonitor, options: CapacityOptions = {}) {
     return this.transact((data) => {
+      if (monitor.enabled) assertRoomForActiveMonitor(data.monitors, options.maxActive);
       data.monitors.push(monitor);
       return { result: monitor, save: true };
     });
   }
 
-  updateMonitor(id: string, patch: Partial<Omit<WeatherMonitor, "id">>) {
+  updateMonitor(id: string, patch: Partial<Omit<WeatherMonitor, "id">>, options: CapacityOptions = {}) {
     return this.transact((data) => {
       const index = data.monitors.findIndex((m) => m.id === id);
       if (index === -1) return { result: null, save: false };
+      if (patch.enabled === true && !data.monitors[index].enabled) {
+        assertRoomForActiveMonitor(data.monitors, options.maxActive);
+      }
       data.monitors[index] = { ...data.monitors[index], ...patch };
       return { result: data.monitors[index], save: true };
     });

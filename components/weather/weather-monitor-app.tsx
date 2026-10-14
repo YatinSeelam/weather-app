@@ -220,6 +220,15 @@ export function WeatherMonitorApp() {
     }
   };
 
+  const lockMonitors = async () => {
+    setMonitorError(null);
+    try {
+      await monitors.lock();
+    } catch (error) {
+      setMonitorError(errorMessage(error));
+    }
+  };
+
   const handleViewMonitor = (monitor: WeatherMonitor) => {
     const next: MonitorFormValues = {
       zipCode: monitor.zipCode,
@@ -275,6 +284,8 @@ export function WeatherMonitorApp() {
               withMonitor(monitor, () => monitors.update(monitor.id, { emails, emailMode }))
             }
             onDelete={(monitor) => withMonitor(monitor, () => monitors.remove(monitor.id))}
+            onUnlock={monitors.unlock}
+            onLock={() => void lockMonitors()}
           />
         </aside>
 
