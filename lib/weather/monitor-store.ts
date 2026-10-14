@@ -2,9 +2,10 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { AlertStateRecord, RiskChange } from "./alert-change";
 import { singleton } from "./concurrency";
-import { dataDirectory } from "./config";
+import { databaseUrl, dataDirectory } from "./config";
 import { DEFAULT_EMAIL_MODE } from "./constants";
-import { WeatherError } from "./errors";
+import { activeMonitorLimitError } from "./errors";
+import { createPostgresClient, PostgresMonitorStore } from "./postgres-monitor-store";
 import type { EmailMode, MonitorInterval, RiskSelection, SeverityLevel, WeatherThresholds } from "./types";
 
 /** Mirrors a `weather_monitors` row, so moving to a database later is a storage swap only. */
@@ -51,6 +52,8 @@ export type MonitorRun = {
 };
 
 export interface MonitorStore {
+  /** Reported by the health check. */
+  readonly kind?: "json-file" | "postgres";
   listMonitors(): Promise<WeatherMonitor[]>;
   getMonitor(id: string): Promise<WeatherMonitor | null>;
   /** With `maxActive`, refuses (MONITOR_LIMIT) when that many monitors are already enabled. */
@@ -73,12 +76,7 @@ export type CapacityOptions = { maxActive?: number };
 /** Checked inside the store's transaction, so concurrent requests cannot both squeeze past it. */
 function assertRoomForActiveMonitor(monitors: WeatherMonitor[], maxActive: number | undefined): void {
   if (maxActive === undefined) return;
-  if (monitors.filter((m) => m.enabled).length >= maxActive) {
-    throw new WeatherError(
-      "MONITOR_LIMIT",
-      `At most ${maxActive} monitors can be active at once. Pause or delete one first.`,
-    );
-  }
+  if (monitors.filter((m) => m.enabled).length >= maxActive) throw activeMonitorLimitError(maxActive);
 }
 
 type StoreFile = {
@@ -97,6 +95,7 @@ const MAX_RUNS_PER_MONITOR = 50;
  * Suitable for a single server process; swap in a database-backed MonitorStore to scale out.
  */
 export class JsonFileMonitorStore implements MonitorStore {
+  readonly kind = "json-file";
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly filePath: string) {}
@@ -215,9 +214,11 @@ export class JsonFileMonitorStore implements MonitorStore {
   }
 }
 
+/** Postgres (Supabase) when DATABASE_URL is set, otherwise the JSON file. */
 export function getMonitorStore(): MonitorStore {
-  return singleton(
-    "monitor-store",
-    () => new JsonFileMonitorStore(path.join(dataDirectory(), "weather-monitors.json")),
-  );
+  return singleton("monitor-store", () => {
+    const url = databaseUrl();
+    if (url) return new PostgresMonitorStore(createPostgresClient(url));
+    return new JsonFileMonitorStore(path.join(dataDirectory(), "weather-monitors.json"));
+  });
 }

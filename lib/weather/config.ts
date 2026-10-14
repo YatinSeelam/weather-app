@@ -35,6 +35,18 @@ export function maxActiveMonitors(): number {
   return Number.isInteger(value) && value > 0 ? value : DEFAULT_MAX_ACTIVE_MONITORS;
 }
 
+/**
+ * Postgres connection string for saved monitors (Supabase: the pooler URL for the `weather_app`
+ * role). Server-only. Without it monitors are kept in a JSON file under WEATHER_DATA_DIR.
+ */
+export const databaseUrl = () => process.env.DATABASE_URL?.trim() || null;
+
+/**
+ * PEM root certificate that signs the database server's certificate (Supabase: "SSL certificate"
+ * under Database Settings). Not a secret. Escaped "\n" sequences are accepted for one-line env vars.
+ */
+export const databaseCaCert = () => process.env.DATABASE_CA_CERT?.trim().replace(/\\n/g, "\n") || undefined;
+
 export const dataDirectory = () => process.env.WEATHER_DATA_DIR ?? path.join(process.cwd(), "data");
 
 const hostOf = (url: string) => {

@@ -13,7 +13,7 @@ export type ProbeResult = {
 export type WeatherHealth = {
   nws: ProbeResult;
   geocoder: ProbeResult;
-  storage: { reachable: boolean; kind: "json-file" };
+  storage: { reachable: boolean; kind: "json-file" | "postgres" };
   checkedAt: string;
 };
 
@@ -34,11 +34,12 @@ async function probe(url: string, headers: Record<string, string>): Promise<Prob
 }
 
 async function probeStorage(store: MonitorStore): Promise<WeatherHealth["storage"]> {
+  const kind = store.kind ?? "json-file";
   try {
     await store.listMonitors();
-    return { reachable: true, kind: "json-file" };
+    return { reachable: true, kind };
   } catch {
-    return { reachable: false, kind: "json-file" };
+    return { reachable: false, kind };
   }
 }
 

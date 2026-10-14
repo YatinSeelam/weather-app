@@ -50,6 +50,11 @@ export class WeatherError extends Error {
   }
 }
 
+/** Refusal when enabling one more monitor would exceed MAX_ACTIVE_MONITORS. */
+export function activeMonitorLimitError(maxActive: number): WeatherError {
+  return new WeatherError("MONITOR_LIMIT", `At most ${maxActive} monitors can be active at once. Pause or delete one first.`);
+}
+
 export function isWeatherError(error: unknown): error is WeatherError {
   return error instanceof WeatherError;
 }

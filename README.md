@@ -50,6 +50,8 @@ See `.env.example`. Only `MONITOR_API_SECRET` is needed, and only for saved moni
 | `EMAIL_FROM` | Sender, e.g. `Weather Monitor <alerts@yourdomain.com>` (domain verified in Resend). Default `onboarding@resend.dev` delivers only to the Resend account owner. |
 | `EMAIL_TIME_ZONE` | IANA zone for times inside emails. Default `America/New_York`. |
 | `CRON_SECRET` | Bearer token for `/api/cron/weather-monitors`. Required in production to use that endpoint. |
+| `DATABASE_URL` | Postgres for saved monitors (see "Supabase" below). Unset means a JSON file under `WEATHER_DATA_DIR`. |
+| `DATABASE_CA_CERT` | PEM root certificate for verifying the database's TLS certificate (Supabase dashboard, Database Settings). |
 | `WEATHER_SCHEDULER` | `off` disables the in-process scheduler. |
 | `WEATHER_DATA_DIR`, `WEATHER_CACHE_DIR` | Where saved monitors and lookup caches live (default `./data`, `./.cache/weather`). |
 | `NEXT_PUBLIC_MAP_STYLE_URL` | MapLibre basemap style. Defaults to OpenFreeMap (OpenStreetMap data, no key). |
@@ -74,6 +76,19 @@ answers `401` without it. There are no user accounts; whoever holds the key mana
   and `/api/weather/health` stay public; `/api/cron/weather-monitors` keeps using `CRON_SECRET`.
 
 Rate limits are in memory, so they apply per server instance.
+
+## Supabase
+
+On serverless hosting (Vercel) the disk does not persist and nothing runs between requests, so:
+
+- **Storage.** Set `DATABASE_URL` and monitors live in Postgres instead of the JSON file. Schema:
+  `supabase/migrations/*_weather_monitor_store.sql`. Tables sit in a private `weather` schema the
+  Data API does not expose, with RLS on; the app connects as a dedicated `weather_app` role through
+  the transaction pooler (port 6543), always verifying its TLS certificate against
+  `DATABASE_CA_CERT`. No Supabase keys are used or shipped to the browser.
+- **Schedule.** Set `WEATHER_SCHEDULER=off` and let Supabase `pg_cron` + `pg_net` call
+  `/api/cron/weather-monitors` every 5 minutes with `Authorization: Bearer $CRON_SECRET` (the secret
+  is kept in Supabase Vault).
 
 ## How it works
 
