@@ -155,6 +155,13 @@ describe("browser session", () => {
     });
   });
 
+  it("session status ignores bearer tokens, so it cannot be used to test guesses", async () => {
+    const status = (headers: Record<string, string>) =>
+      sessionRoute.GET(request("/api/weather/session", { headers })).then((response) => response.json());
+    expect(await status(bearer())).toEqual({ configured: true, unlocked: false });
+    expect(await status(bearer("wrong"))).toEqual({ configured: true, unlocked: false });
+  });
+
   it("marks the cookie Secure over https", async () => {
     const response = await unlock(SECRET, { "x-forwarded-proto": "https" });
     expect(response.headers.get("set-cookie")).toContain("; Secure");

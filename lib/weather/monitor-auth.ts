@@ -116,10 +116,15 @@ export function authorizeMonitorRequest(request: Request): void {
   throw new WeatherError("UNAUTHORIZED", UNAUTHORIZED_MESSAGES[verdict]);
 }
 
-/** Whether the request is already allowed in, without counting anything. */
+/**
+ * Whether this browser holds a valid session. Looks only at the cookie: this endpoint is
+ * unthrottled, so it must never check a bearer token (that would be a free guessing oracle).
+ */
 export function sessionStatus(request: Request): { configured: boolean; unlocked: boolean } {
   const secret = monitorApiSecret();
-  return { configured: secret !== null, unlocked: secret !== null && evaluate(request, secret) === "ok" };
+  if (!secret) return { configured: false, unlocked: false };
+  const token = readCookie(request, SESSION_COOKIE);
+  return { configured: true, unlocked: token !== null && verifySessionToken(token, secret) === "valid" };
 }
 
 /** Whether `candidate` is the access key. Constant time. */
